@@ -250,8 +250,7 @@ func routeshow() error {
 			for v :=1; v < len(rows); v++ {
 
 				if matched = ubunto_eofpattern.MatchString(rows[v]); matched  {
-						// Got to the EOF, exit cleanly
-						return nil
+					return nil
 				} else if matched = ubunto_bodypattern.MatchString(rows[v]); matched {
 
 					// Get the cols, can make some assumptions based on the regex match used
@@ -285,35 +284,15 @@ func routeshow() error {
 							}
 						}
 					}
+					// Print the output
 					flog.Printf("%s via %s ?dev? %s ?proto? ?dhcp? metric %s",o[0],o[1],o[2],o[3])
-					/*
-					Flags := cols[3]
-					RefCnt := cols[4]
-					Use := cols[5]
-					MTU := cols[8]
-					Window := cols[9]
-					IRTT := cols[10]
-					*/
-					/*
-					0  ip: col content 'ens33'
-					1  ip: col content '00C210AC'
-					2  ip: col content '00000000'
-					3  ip: col content '0001'
-					4  ip: col content '0'
-					5  ip: col content '0'
-					6  ip: col content '100'
-					7  ip: col content '00FFFFFF'
-					8  ip: col content '0'
-					9  ip: col content '0'
-					10 ip: col content '0'
-					*/
 				} else {
-						flog.Printf("error matching body %t %v", matched, err)
+						flog.Printf("error matching body %b %v", matched, err)
 						return nil
 				}
 			}
 		} else {
-				flog.Printf("error matching header %t %v", matched, err)
+				flog.Printf("error matching header %b %v", matched, err)
 				return nil
 		}
 	} else {
