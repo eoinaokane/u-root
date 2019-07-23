@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"regexp"
 	"strings"
 	"strconv"
 
@@ -210,7 +209,7 @@ func link() error {
 }
 
 func routeshow() error {
-	path := "/proc/net/route"
+	path := "c"
 	if *inet6 {
 		path = "/proc/net/ipv6_route"
 	}
@@ -221,10 +220,12 @@ func routeshow() error {
 	// Need to formation this better.
 	if !(*inet6) {
 	/*
-	ip: Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT
-  ens33	00000000	02C210AC	0003	0	0	100	00000000	0	0	0
-  ens33	0000FEA9	00000000	0001	0	0	1000	0000FFFF	0	0	0
-  ens33	00C210AC	00000000	0001	0	0	100	00FFFFFF	0	0	0
+	ip:
+	0			1						2					3			4				5		6				7					8		9				10
+	Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask			MTU	Window	IRTT
+  ens33	00000000		02C210AC	0003	0				0		100			00000000	0		0				0
+  ens33	0000FEA9		00000000	0001	0				0		1000		0000FFFF	0		0				0
+  ens33	00C210AC		00000000	0001	0				0		100			00FFFFFF	0		0				0
 
 	want to turn it into something like this
 
@@ -233,67 +234,64 @@ func routeshow() error {
 	169.254.0.0/16 dev ens33 scope link metric 1000
 	172.16.194.0/24 dev ens33 proto kernel scope link src 172.16.194.129 metric 100
 
+	TODO:
+	* Figure out where the scope SCOPE_VAL comes from
+	* Figure out where the protocol RTPPROTO comes from
+
 	*/
 		// Split the string by new line (Assumed format above)
 		rows := strings.Split(string(b),"\n")
 
-		// May be over kill but check for the format of the headerpattern for ubunto (is this this same
-		// for all linux implementations??? No clue, need to check with Andrea)
-		ubunto_headerpattern,_  := regexp.Compile("Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT")
-		ubunto_bodypattern,_ := regexp.Compile(("([a-z])\\w+	([0-9A-F]{8})	([0-9A-F]{8})	(000[1-3])	(\\d){1}	(\\d){1}	(\\d){3,4}	([0-9A-F]{8})	(\\d){1}	(\\d){1}	(\\d){1}"))
-		ubunto_eofpattern,_ := regexp.Compile("^$")
+		// Get the headers
+		row := strings.Fields(rows[0])
 
-		// check for the ubunto to line for ipv4
-		if matched:= ubunto_headerpattern.MatchString(rows[0]); matched {
+		// Set a boolean for the end of file
+		eof := false
 
-			// Skip the top line, (already verified with regex)
-			for v :=1; v < len(rows); v++ {
+		// Skip the top line, (already verified with regex)
+		for v :=1; v < len(rows) && !eof; v++ {
+			if rows[v]=="" {
 
-				if matched = ubunto_eofpattern.MatchString(rows[v]); matched  {
-						// Got to the EOF, exit cleanly
-						return nil
-				} else if matched = ubunto_bodypattern.MatchString(rows[v]); matched {
+				// Found the end of the file
+				eof = true
+			} else {
 
-					// Get the cols, can make some assumptions based on the regex match used
-					cols := strings.Split(strings.Trim(rows[v]," "), "\t")
+				// Get the cols, can make some assumptions based on the regex match used
+				row = strings.Fields(strings.Trim(rows[v]," "))
 
-					// Create a simple array to hold the output
-					var o []string
-					// Get the source ip address, it's in hex format.
-					if src_address, err := hextoipaddress(cols[1]); err!=nil {
-						flog.Printf("Cannot decode the source ip address %v",err)
+				// Create a simple array to hold the output
+				var o []string
+
+				// Get the source ip address, it's in hex format.
+				if src_address, err := hextoipaddress(row[1]); err!=nil {
+					flog.Printf("Cannot decode the source ip address %v",err)
+					return err
+				} else {
+					o = append(o, src_address)
+					if gateway_address, err := hextoipaddress(row[2]); err!=nil {
+						flog.Printf("Cannot decode the gateway ip address %v",err)
 						return err
-					} else {
-						o = append(o, src_address)
-						if gateway_address, err := hextoipaddress(cols[2]); err!=nil {
-							flog.Printf("Cannot decode the gateway ip address %v",err)
+					}	else {
+						o = append(o, gateway_address)
+						if mask_address,err := hextoipaddress(row[7]); err!=nil {
+							flog.Printf("Cannot decode the mask ip address %v",err)
 							return err
-						}	else {
-							o = append(o, gateway_address)
-							if mask_address,err := hextoipaddress(cols[7]); err!=nil {
-								flog.Printf("Cannot decode the mask ip address %v",err)
-								return err
-							} else {
-								mask_address := net.IPMask(net.ParseIP(mask_address).To4())
-								mask_size, _ := mask_address.Size()
-								if mask_size != 0 {
-										o[0] += "/"
-										o[0] += strconv.Itoa(mask_size)
-								}
-								o = append(o, cols[0])
-								o = append(o, cols[6])
+						} else {
+							mask_address := net.IPMask(net.ParseIP(mask_address).To4())
+							mask_size, _ := mask_address.Size()
+							if mask_size != 0 {
+								o[0] += "/"
+								o[0] += strconv.Itoa(mask_size)
 							}
+							o = append(o, row[0])
+							o = append(o, row[6])
 						}
 					}
-					flog.Printf("%s via %s ?dev? %s ?proto? ?dhcp? metric %s",o[0],o[1],o[2],o[3])
-				} else {
-						flog.Printf("error matching body %t %v", matched, err)
-						return nil
 				}
+				// according to http://www.policyrouting.org/iproute2.doc.html#ss9.5.5
+				// dev NAME (default) --- NAME specifies the network device to operate on
+				flog.Printf("%s via %s dev %s ?proto? ?dhcp? metric %s",o[0],o[1],o[2],o[3])
 			}
-		} else {
-				flog.Printf("error matching header %t %v", matched, err)
-				return nil
 		}
 	} else {
 		flog.Printf("%s", string(b))
