@@ -30,12 +30,7 @@ func showLinks(w io.Writer, withAddresses bool) error {
 		fmt.Fprintf(w, "    link/%s %s\n", l.EncapType, l.HardwareAddr)
 
 		if withAddresses {
-			if err := showLinkAddresses(w, v); err!=nil {
-				return err
-			} else {
-				// goodness
-				return nil
-			}
+			showLinkAddresses(w, v)
 		}
 	}
 	return nil
