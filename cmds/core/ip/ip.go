@@ -8,14 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
+	l "log"
 	"net"
 	"os"
-	"regexp"
 	"strings"
-	"strconv"
-
-	"encoding/hex"
 
 	flag "github.com/spf13/pflag"
 
@@ -49,7 +45,7 @@ var (
 	cursor    int
 	arg       []string
 	whatIWant []string
-	flog       = log.New(os.Stdout, "ip: ", 0)
+	log       = l.New(os.Stdout, "ip: ", 0)
 
 	addrScopes = map[netlink.Scope]string{
 		netlink.SCOPE_UNIVERSE: "global",
@@ -218,129 +214,8 @@ func routeshow() error {
 	if err != nil {
 		return fmt.Errorf("Route show failed: %v", err)
 	}
-	// Need to formation this better.
-	if !(*inet6) {
-	/*
-	ip: Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT
-  ens33	00000000	02C210AC	0003	0	0	100	00000000	0	0	0
-  ens33	0000FEA9	00000000	0001	0	0	1000	0000FFFF	0	0	0
-  ens33	00C210AC	00000000	0001	0	0	100	00FFFFFF	0	0	0
-
-	want to turn it into something like this
-
-	eoinokane@ubuntu:~/.gvm/pkgsets/go1.12/global/src/github.com/u-root/u-root/cmds/core/ip$ ip route
-	default via 172.16.194.2 dev ens33 proto dhcp metric 100
-	169.254.0.0/16 dev ens33 scope link metric 1000
-	172.16.194.0/24 dev ens33 proto kernel scope link src 172.16.194.129 metric 100
-
-	*/
-		// Split the string by new line (Assumed format above)
-		rows := strings.Split(string(b),"\n")
-
-		// May be over kill but check for the format of the headerpattern for ubunto (is this this same
-		// for all linux implementations??? No clue, need to check with Andrea)
-		ubunto_headerpattern,_  := regexp.Compile("Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT")
-		ubunto_bodypattern,_ := regexp.Compile(("([a-z])\\w+	([0-9A-F]{8})	([0-9A-F]{8})	(000[1-3])	(\\d){1}	(\\d){1}	(\\d){3,4}	([0-9A-F]{8})	(\\d){1}	(\\d){1}	(\\d){1}"))
-		ubunto_eofpattern,_ := regexp.Compile("^$")
-
-		// check for the ubunto to line for ipv4
-		if matched:= ubunto_headerpattern.MatchString(rows[0]); matched {
-
-			// Skip the top line, (already verified with regex)
-			for v :=1; v < len(rows); v++ {
-
-				if matched = ubunto_eofpattern.MatchString(rows[v]); matched  {
-						// Got to the EOF, exit cleanly
-						return nil
-				} else if matched = ubunto_bodypattern.MatchString(rows[v]); matched {
-
-					// Get the cols, can make some assumptions based on the regex match used
-					cols := strings.Split(strings.Trim(rows[v]," "), "\t")
-
-					// Create a simple array to hold the output
-					var o []string
-					// Get the source ip address, it's in hex format.
-					if src_address, err := hextoipaddress(cols[1]); err!=nil {
-						flog.Printf("Cannot decode the source ip address %v",err)
-						return err
-					} else {
-						o = append(o, src_address)
-						if gateway_address, err := hextoipaddress(cols[2]); err!=nil {
-							flog.Printf("Cannot decode the gateway ip address %v",err)
-							return err
-						}	else {
-							o = append(o, gateway_address)
-							if mask_address,err := hextoipaddress(cols[7]); err!=nil {
-								flog.Printf("Cannot decode the mask ip address %v",err)
-								return err
-							} else {
-								mask_address := net.IPMask(net.ParseIP(mask_address).To4())
-								mask_size, _ := mask_address.Size()
-								if mask_size != 0 {
-										o[0] += "/"
-										o[0] += strconv.Itoa(mask_size)
-								}
-								o = append(o, cols[0])
-								o = append(o, cols[6])
-							}
-						}
-					}
-					flog.Printf("%s via %s ?dev? %s ?proto? ?dhcp? metric %s",o[0],o[1],o[2],o[3])
-					/*
-					Flags := cols[3]
-					RefCnt := cols[4]
-					Use := cols[5]
-					MTU := cols[8]
-					Window := cols[9]
-					IRTT := cols[10]
-					*/
-					/*
-					0  ip: col content 'ens33'
-					1  ip: col content '00C210AC'
-					2  ip: col content '00000000'
-					3  ip: col content '0001'
-					4  ip: col content '0'
-					5  ip: col content '0'
-					6  ip: col content '100'
-					7  ip: col content '00FFFFFF'
-					8  ip: col content '0'
-					9  ip: col content '0'
-					10 ip: col content '0'
-					*/
-				} else {
-						flog.Printf("error matching body %t %v", matched, err)
-						return nil
-				}
-			}
-		} else {
-				flog.Printf("error matching header %t %v", matched, err)
-				return nil
-		}
-	} else {
-		flog.Printf("%s", string(b))
-	}
+	log.Printf("%s", string(b))
 	return nil
-}
-
-func hextoipaddress(src_address_hex string) (string, error) {
-	if a, err := hex.DecodeString(src_address_hex); err!=nil {
-		flog.Printf("hextoipaddress(%s) Cannot decode the source ip address %v",src_address_hex, err)
-		return string(""), err
-	} else {
-		/*
-		for i:=0; i < len(a); i++ {
-			flog.Printf("hexttoipaddress(%s) a[%d]='%s'",src_address_hex,i,strconv.Itoa(int(a[i])))
-		}
-		*/
-		src_address_string := fmt.Sprintf("%v.%v.%v.%v",strconv.Itoa(int(a[3])), strconv.Itoa(int(a[2])), strconv.Itoa(int(a[1])), strconv.Itoa(int(a[0])))
-
-		// Check if it's the default address, am I being overly clever
-		if ip := net.ParseIP(src_address_string); ip.Equal(net.IPv4zero) {
-			return "default", nil
-		} else {
-			return src_address_string, nil
-		}
-	}
 }
 
 func nodespec() string {
@@ -377,7 +252,7 @@ func routeadddefault() error {
 	}
 	switch nh {
 	case "via":
-		flog.Printf("Add default route %v via %v", nhval, l.Attrs().Name)
+		log.Printf("Add default route %v via %v", nhval, l.Attrs().Name)
 		r := &netlink.Route{LinkIndex: l.Attrs().Index, Gw: nhval.IPNet.IP}
 		if err := netlink.RouteAdd(r); err != nil {
 			return fmt.Errorf("error adding default route to %v: %v", l.Attrs().Name, err)
@@ -437,13 +312,13 @@ func main() {
 		case nil:
 		case error:
 			if strings.Contains(err.Error(), "index out of range") {
-				flog.Fatalf("Args: %v, I got to arg %v, I wanted %v after that", arg, cursor, whatIWant)
+				log.Fatalf("Args: %v, I got to arg %v, I wanted %v after that", arg, cursor, whatIWant)
 			} else if strings.Contains(err.Error(), "slice bounds out of range") {
-				flog.Fatalf("Args: %v, I got to arg %v, I wanted %v after that", arg, cursor, whatIWant)
+				log.Fatalf("Args: %v, I got to arg %v, I wanted %v after that", arg, cursor, whatIWant)
 			}
-			flog.Fatalf("Bummer: %v", err)
+			log.Fatalf("Bummer: %v", err)
 		default:
-			flog.Fatalf("unexpected panic value: %T(%v)", err, err)
+			log.Fatalf("unexpected panic value: %T(%v)", err, err)
 		}
 	}()
 
@@ -460,9 +335,10 @@ func main() {
 	case "neigh":
 		err = neigh()
 	default:
-		err = usage()
+		usage()
 	}
 	if err != nil {
-		flog.Fatal(err)
+		log.Fatal(err)
 	}
+
 }
