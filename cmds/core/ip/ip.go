@@ -220,25 +220,43 @@ func routeshow() error {
 	// Need to formation this better.
 	if !(*inet6) {
 	/*
-	ip:
-	0			1						2					3			4				5		6				7					8		9				10
-	Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask			MTU	Window	IRTT
-  ens33	00000000		02C210AC	0003	0				0		100			00000000	0		0				0
-  ens33	0000FEA9		00000000	0001	0				0		1000		0000FFFF	0		0				0
-  ens33	00C210AC		00000000	0001	0				0		100			00FFFFFF	0		0				0
+		ip:
+		0			1						2					3			4				5		6				7					8		9				10
+		Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask			MTU	Window	IRTT
+  	ens33	00000000		02C210AC	0003	0				0		100			00000000	0		0				0
+  	ens33	0000FEA9		00000000	0001	0				0		1000		0000FFFF	0		0				0
+  	ens33	00C210AC		00000000	0001	0				0		100			00FFFFFF	0		0				0
 
-	want to turn it into something like this
+		want to turn it into something like this
 
-	eoinokane@ubuntu:~/.gvm/pkgsets/go1.12/global/src/github.com/u-root/u-root/cmds/core/ip$ ip route
-	default via 172.16.194.2 dev ens33 proto dhcp metric 100
-	169.254.0.0/16 dev ens33 scope link metric 1000
-	172.16.194.0/24 dev ens33 proto kernel scope link src 172.16.194.129 metric 100
+		eoinokane@ubuntu:~/.gvm/pkgsets/go1.12/global/src/github.com/u-root/u-root/cmds/core/ip$ ip route
+		default via 172.16.194.2 dev ens33 proto dhcp metric 100
+		169.254.0.0/16 dev ens33 scope link metric 1000
+		172.16.194.0/24 dev ens33 proto kernel scope link src 172.16.194.129 metric 100
 
-	TODO:
-	* Figure out where the scope SCOPE_VAL comes from
-	* Figure out where the protocol RTPPROTO comes from
+		TODO:
+		* Figure out where the scope SCOPE_VAL comes from
+		 		<snip>
+				scope SCOPE_VALUE --- scope of the area within which this address is valid.
+				The available scopes are listed in the file
+				/etc/iproute2/rt_scopes. The predefined scope values are:
+				global --- the address is globally valid.
+				site --- (IPv6 only) address is site local, valid only inside this site.
+				link --- the address is link local, valid only on this device.
+				host --- the address is valid only inside this host.
+				</snip>
+		* Figure out where the protocol RTPPROTO comes from
+		  	according to http://www.policyrouting.org/iproute2.doc.html#ss9.5.5
+				<snip>
+				protocol RTPROTO --- routing protocol identifier of this route. RTPROTO
+				may be a number or a string from the file /etc/iproute2/rt_protos. If the
+				routing protocol ID is not given ip assumes the protocol is boot. IE.
+				This route has been added by someone who does not understand what they are doing.
+				Several of these protocol values have a fixed interpretation.
+				<snip>
+		* Confirm of dev NAME (default) --- NAME specifies the network device to operate on
 
-	*/
+		*/
 		// Split the string by new line (Assumed format above)
 		rows := strings.Split(string(b),"\n")
 
@@ -288,8 +306,6 @@ func routeshow() error {
 						}
 					}
 				}
-				// according to http://www.policyrouting.org/iproute2.doc.html#ss9.5.5
-				// dev NAME (default) --- NAME specifies the network device to operate on
 				flog.Printf("%s via %s dev %s ?proto? ?dhcp? metric %s",o[0],o[1],o[2],o[3])
 			}
 		}
